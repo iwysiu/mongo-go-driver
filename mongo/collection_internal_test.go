@@ -594,7 +594,7 @@ func TestCollection_InsertMany_Batches(t *testing.T) {
 		t.Skip("skipping long running integration test outside of evergreen")
 	}
 
-	////t.Parallel()
+	//////t.Parallel()
 
 	const (
 		megabyte = 10 * 10 * 10 * 10 * 10 * 10

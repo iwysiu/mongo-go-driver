@@ -223,7 +223,7 @@ func createSessionsMonitoredClient(t *testing.T, monitor *event.CommandMonitor) 
 	clock := &session.ClusterClock{}
 
 	c := &Client{
-		topology:       createMonitoredTopology(t, clock, monitor, nil),
+		deployment:     createMonitoredTopology(t, clock, monitor, nil),
 		connString:     testutil.ConnString(t),
 		readPreference: readpref.Primary(),
 		readConcern:    readconcern.Local(),
@@ -232,9 +232,9 @@ func createSessionsMonitoredClient(t *testing.T, monitor *event.CommandMonitor) 
 		monitor:        monitor,
 	}
 
-	subscription, err := c.topology.Subscribe()
+	subscription, err := c.deployment.(*topology.Topology).Subscribe()
 	testhelpers.RequireNil(t, err, "error subscribing to topology: %s", err)
-	c.topology.SessionPool = session.NewPool(subscription.C)
+	c.sessionPool = session.NewPool(subscription.C)
 
 	return c
 }
@@ -294,7 +294,7 @@ func getTestName(t *testing.T) string {
 }
 
 func verifySessionsReturned(t *testing.T, client *Client) {
-	checkedOut := client.topology.SessionPool.CheckedOut()
+	checkedOut := client.sessionPool.CheckedOut()
 	if checkedOut != 0 {
 		t.Fatalf("%d sessions not returned for %s", checkedOut, t.Name())
 	}
@@ -323,7 +323,7 @@ func drainCursor(returnVals []reflect.Value) {
 }
 
 func testCheckedOut(t *testing.T, client *Client, expected int) {
-	actual := client.topology.SessionPool.CheckedOut()
+	actual := client.sessionPool.CheckedOut()
 	if actual != expected {
 		t.Fatalf("checked out mismatch. expected %d got %d", expected, actual)
 	}

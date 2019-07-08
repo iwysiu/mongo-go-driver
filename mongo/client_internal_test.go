@@ -34,22 +34,25 @@ import (
 
 func createTestClient(t *testing.T) *Client {
 	id, _ := uuid.New()
-	return &Client{
+	c := &Client{
 		id:             id,
-		topology:       testutil.Topology(t),
+		deployment:     testutil.Topology(t),
 		connString:     testutil.ConnString(t),
 		readPreference: readpref.Primary(),
 		clock:          &session.ClusterClock{},
 		registry:       bson.DefaultRegistry,
 		retryWrites:    true,
+		sessionPool:    testutil.SessionPool(),
 	}
+
+	return c
 }
 
 func createTestClientWithConnstring(t *testing.T, cs connstring.ConnString) *Client {
 	id, _ := uuid.New()
 	return &Client{
 		id:             id,
-		topology:       testutil.TopologyWithConnString(t, cs),
+		deployment:     testutil.TopologyWithConnString(t, cs),
 		connString:     cs,
 		readPreference: readpref.Primary(),
 		clock:          &session.ClusterClock{},
@@ -67,14 +70,14 @@ func skipIfBelow30(t *testing.T) {
 }
 
 func TestNewClient(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 
 	c := createTestClient(t)
-	require.NotNil(t, c.topology)
+	require.NotNil(t, c.deployment)
 }
 
 func TestClient_Database(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 
 	dbName := "foo"
 
@@ -142,7 +145,7 @@ func TestClientRegistryPassedToCursors(t *testing.T) {
 
 func TestClient_TLSConnection(t *testing.T) {
 	skipIfBelow30(t) // 3.0 doesn't return a security field in the serverStatus response
-	t.Parallel()
+	//t.Parallel()
 
 	if testing.Short() {
 		t.Skip()
@@ -175,7 +178,7 @@ func TestClient_TLSConnection(t *testing.T) {
 }
 
 func TestClient_X509Auth(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 
 	if testing.Short() {
 		t.Skip()
@@ -258,7 +261,7 @@ func TestClient_X509Auth(t *testing.T) {
 }
 
 func TestClient_ReplaceTopologyError(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 
 	if testing.Short() {
 		t.Skip()
@@ -284,7 +287,7 @@ func TestClient_ReplaceTopologyError(t *testing.T) {
 }
 
 func TestClient_ListDatabases_noFilter(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 
 	if testing.Short() {
 		t.Skip()
@@ -316,7 +319,7 @@ func TestClient_ListDatabases_noFilter(t *testing.T) {
 }
 
 func TestClient_ListDatabases_filter(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 
 	if testing.Short() {
 		t.Skip()
@@ -346,7 +349,7 @@ func TestClient_ListDatabases_filter(t *testing.T) {
 }
 
 func TestClient_ListDatabaseNames_noFilter(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 
 	if testing.Short() {
 		t.Skip()
@@ -378,7 +381,7 @@ func TestClient_ListDatabaseNames_noFilter(t *testing.T) {
 }
 
 func TestClient_ListDatabaseNames_filter(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 
 	if testing.Short() {
 		t.Skip()
@@ -409,7 +412,7 @@ func TestClient_ListDatabaseNames_filter(t *testing.T) {
 }
 
 func TestClient_NilDocumentError(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 
 	c := createTestClient(t)
 
@@ -424,7 +427,7 @@ func TestClient_NilDocumentError(t *testing.T) {
 }
 
 func TestClient_ReadPreference(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 
 	if testing.Short() {
 		t.Skip()
@@ -457,7 +460,7 @@ func TestClient_ReadPreference(t *testing.T) {
 }
 
 func TestClient_ReadPreferenceAbsent(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 
 	cs := testutil.ConnString(t)
 	c, err := NewClient(options.Client().ApplyURI(cs.String()))

@@ -51,12 +51,13 @@ var monitor = &event.CommandMonitor{
 
 func createMonitoredClient(t *testing.T, monitor *event.CommandMonitor) *Client {
 	return &Client{
-		topology:       testutil.GlobalMonitoredTopology(t, monitor),
+		deployment:     testutil.GlobalMonitoredTopology(t, monitor),
 		connString:     testutil.ConnString(t),
 		readPreference: readpref.Primary(),
 		clock:          &session.ClusterClock{},
 		registry:       bson.DefaultRegistry,
 		monitor:        monitor,
+		sessionPool:    testutil.GlobalMonitoredSessionPool(),
 	}
 }
 

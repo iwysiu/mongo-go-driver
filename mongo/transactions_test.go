@@ -8,6 +8,7 @@ package mongo
 
 import (
 	"encoding/json"
+	"go.mongodb.org/mongo-driver/x/mongo/driver/topology"
 	"io/ioutil"
 	"testing"
 
@@ -362,7 +363,7 @@ func runTransactionsTestCase(t *testing.T, test *transTestCase, testfile transTe
 
 func killSessions(t *testing.T, client *Client) {
 	err := operation.NewCommand(bsoncore.BuildDocument(nil, bsoncore.AppendArrayElement(nil, "killAllSessions", bsoncore.BuildArray(nil)))).
-		Database("admin").ServerSelector(description.WriteSelector()).Deployment(client.topology).Execute(context.Background())
+		Database("admin").ServerSelector(description.WriteSelector()).Deployment(client.deployment).Execute(context.Background())
 	require.NoError(t, err)
 }
 
@@ -393,7 +394,7 @@ func createTransactionsMonitoredClient(t *testing.T, monitor *event.CommandMonit
 		cs.Hosts = []string{host}
 	}
 	c := &Client{
-		topology:       createMonitoredTopology(t, clock, monitor, &cs),
+		deployment:     createMonitoredTopology(t, clock, monitor, &cs),
 		connString:     cs,
 		readPreference: readpref.Primary(),
 		clock:          clock,
@@ -402,9 +403,9 @@ func createTransactionsMonitoredClient(t *testing.T, monitor *event.CommandMonit
 	}
 	addClientOptions(c, opts)
 
-	subscription, err := c.topology.Subscribe()
+	subscription, err := c.deployment.(*topology.Topology).Subscribe()
 	testhelpers.RequireNil(t, err, "error subscribing to topology: %s", err)
-	c.topology.SessionPool = session.NewPool(subscription.C)
+	c.sessionPool = session.NewPool(subscription.C)
 
 	return c
 }

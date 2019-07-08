@@ -25,7 +25,6 @@ import (
 	"go.mongodb.org/mongo-driver/x/mongo/driver/address"
 	"go.mongodb.org/mongo-driver/x/mongo/driver/description"
 	"go.mongodb.org/mongo-driver/x/mongo/driver/dns"
-	"go.mongodb.org/mongo-driver/x/mongo/driver/session"
 )
 
 // ErrSubscribeAfterClosed is returned when a user attempts to subscribe to a
@@ -71,8 +70,6 @@ type Topology struct {
 	pollHeartbeatTime atomic.Value // holds a bool
 
 	fsm *fsm
-
-	SessionPool *session.Pool
 
 	// This should really be encapsulated into it's own type. This will likely
 	// require a redesign so we can share a minimum of data between the
@@ -136,6 +133,9 @@ func (t *Topology) Connect() error {
 		addr := address.Address(a).Canonicalize()
 		t.fsm.Servers = append(t.fsm.Servers, description.Server{Addr: addr})
 		err = t.addServer(addr)
+		if err != nil {
+			return err
+		}
 	}
 	t.serversLock.Unlock()
 
@@ -147,11 +147,7 @@ func (t *Topology) Connect() error {
 	t.subscriptionsClosed = false // explicitly set in case topology was disconnected and then reconnected
 
 	atomic.StoreInt32(&t.connectionstate, connected)
-
-	// After connection, make a subscription to keep the pool updated
-	sub, err := t.Subscribe()
-	t.SessionPool = session.NewPool(sub.C)
-	return err
+	return nil
 }
 
 // Disconnect closes the topology. It stops the monitoring thread and
