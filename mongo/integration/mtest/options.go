@@ -9,7 +9,7 @@ type TopologyKind string
 
 // These constants specify valid values for TopologyKind
 const (
-	ReplicaSet TopologyKind = "replicaSet"
+	ReplicaSet TopologyKind = "replicaset"
 	Sharded = "sharded"
 	Single = "single"
 )
