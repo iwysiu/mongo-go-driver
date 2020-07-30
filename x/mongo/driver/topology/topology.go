@@ -21,10 +21,13 @@ import (
 
 	"fmt"
 
+	"go.mongodb.org/mongo-driver/event"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"go.mongodb.org/mongo-driver/x/mongo/driver"
 	"go.mongodb.org/mongo-driver/x/mongo/driver/address"
 	"go.mongodb.org/mongo-driver/x/mongo/driver/description"
 	"go.mongodb.org/mongo-driver/x/mongo/driver/dns"
+	"go.mongodb.org/mongo-driver/x/mongo/driver/uuid"
 )
 
 // ErrSubscribeAfterClosed is returned when a user attempts to subscribe to a
@@ -88,6 +91,8 @@ type Topology struct {
 	serversLock   sync.Mutex
 	serversClosed bool
 	servers       map[address.Address]*Server
+
+	id uuid.UUID
 }
 
 var _ driver.Deployment = &Topology{}
@@ -112,6 +117,11 @@ func New(opts ...Option) (*Topology, error) {
 		return nil, err
 	}
 
+	newID, err := uuid.New()
+	if err != nil {
+		return nil, err
+	}
+
 	t := &Topology{
 		cfg:               cfg,
 		done:              make(chan struct{}),
@@ -121,6 +131,7 @@ func New(opts ...Option) (*Topology, error) {
 		subscribers:       make(map[uint64]chan description.Topology),
 		servers:           make(map[address.Address]*Server),
 		dnsResolver:       dns.DefaultResolver,
+		id:                newID,
 	}
 	t.desc.Store(description.Topology{})
 	t.updateCallback = func(desc description.Server) description.Server {
@@ -142,6 +153,9 @@ func New(opts ...Option) (*Topology, error) {
 	if t.cfg.uri != "" {
 		t.pollingRequired = strings.HasPrefix(t.cfg.uri, "mongodb+srv://")
 	}
+
+	t.publishTopologyOpeningEvent()
+	t.publishInitialTopologyDescriptionChangedEvent(t.fsm.Topology, t.fsm.Topology)
 
 	return t, nil
 }
@@ -194,6 +208,7 @@ func (t *Topology) Disconnect(ctx context.Context) error {
 
 	for _, server := range servers {
 		_ = server.Disconnect(ctx)
+		t.publishServerClosedEvent(server.address)
 	}
 
 	t.subLock.Lock()
@@ -212,6 +227,7 @@ func (t *Topology) Disconnect(ctx context.Context) error {
 	t.desc.Store(description.Topology{})
 
 	atomic.StoreInt32(&t.connectionstate, disconnected)
+	t.publishTopologyClosedEvent()
 	return nil
 }
 
@@ -541,6 +557,7 @@ func (t *Topology) processSRVResults(parsedHosts []string) bool {
 	if t.serversClosed {
 		return false
 	}
+	prev := t.fsm.Topology
 	diff := t.fsm.Topology.DiffHostlist(parsedHosts)
 
 	if len(diff.Added) == 0 && len(diff.Removed) == 0 {
@@ -560,6 +577,7 @@ func (t *Topology) processSRVResults(parsedHosts []string) bool {
 		}()
 		delete(t.servers, addr)
 		t.fsm.removeServerByAddr(addr)
+		t.publishServerClosedEvent(s.address)
 	}
 	for _, a := range diff.Added {
 		addr := address.Address(a).Canonicalize()
@@ -573,6 +591,8 @@ func (t *Topology) processSRVResults(parsedHosts []string) bool {
 		SessionTimeoutMinutes: t.fsm.SessionTimeoutMinutes,
 	}
 	t.desc.Store(newDesc)
+
+	t.publishTopologyDescriptionChangedEvent(prev, newDesc)
 
 	t.subLock.Lock()
 	for _, ch := range t.subscribers {
@@ -623,6 +643,7 @@ func (t *Topology) apply(ctx context.Context, desc description.Server) descripti
 				_ = s.Disconnect(cancelCtx)
 			}()
 			delete(t.servers, removed.Addr)
+			t.publishServerClosedEvent(s.address)
 		}
 	}
 
@@ -631,6 +652,9 @@ func (t *Topology) apply(ctx context.Context, desc description.Server) descripti
 	}
 
 	t.desc.Store(current)
+	if !description.TopologyEqual(prev, current) {
+		t.publishTopologyDescriptionChangedEvent(prev, current)
+	}
 
 	t.subLock.Lock()
 	for _, ch := range t.subscribers {
@@ -656,6 +680,7 @@ func (t *Topology) addServer(addr address.Address) error {
 		return err
 	}
 
+	svr.topologyID.Store(t.id)
 	t.servers[addr] = svr
 
 	return nil
@@ -672,4 +697,236 @@ func (t *Topology) String() string {
 		serversStr += "{ " + s.String() + " }, "
 	}
 	return fmt.Sprintf("Type: %s, Servers: [%s]", desc.Kind, serversStr)
+}
+
+// publishes a ServerClosedEvent to indicate the server has closed
+func (t *Topology) publishServerClosedEvent(addr address.Address) {
+	serverClosed := &event.ServerClosedEvent{
+		Address: event.ServerAddress(addr.String()),
+		ID:      event.TopologyID(t.id),
+	}
+
+	if t.cfg.sdamMonitor != nil && t.cfg.sdamMonitor.ServerClosed != nil {
+		t.cfg.sdamMonitor.ServerClosed(serverClosed)
+	}
+}
+
+// publishes an initial TopologyDescriptionChangedEvent with an unknown previous
+// topology description
+func (t *Topology) publishInitialTopologyDescriptionChangedEvent(prev description.Topology, current description.Topology) {
+
+	var prevDesc, newDesc event.TopologyDescription
+	var kind event.TopologyKind
+	var setName string
+	var servers []event.ServerDescription
+
+	// create an unknown description for initial description
+	prevDesc = event.TopologyDescription{
+		Kind:              event.TopologyKind(0),
+		Servers:           []event.ServerDescription{},
+		SetName:           "",
+		HasReadableServer: t.HasReadableServer,
+		HasWritableServer: t.HasWritableServer,
+	}
+
+	// create empty server descriptions
+	for _, s := range t.cfg.seedList {
+		server := event.ServerDescription{
+			Address:  event.ServerAddress(address.Address(s).String()),
+			Arbiters: []event.ServerAddress{},
+			Hosts:    []event.ServerAddress{},
+			Passives: []event.ServerAddress{},
+			Kind:     event.ServerKind(0),
+		}
+		servers = append(servers, server)
+	}
+
+	if current.Kind.String() != "Unknown" {
+		kind = event.TopologyKind(current.Kind)
+	}
+	if len(servers) == 1 {
+		kind = event.Single
+	}
+	if t.cfg.replicaSetName != "" {
+		setName = t.cfg.replicaSetName
+	}
+
+	newDesc = event.TopologyDescription{
+		Kind:              kind,
+		Servers:           servers,
+		SetName:           setName,
+		HasReadableServer: t.HasReadableServer,
+		HasWritableServer: t.HasWritableServer,
+	}
+
+	topologyDescriptionChanged := &event.TopologyDescriptionChangedEvent{
+		ID:                  event.TopologyID(t.id),
+		PreviousDescription: prevDesc,
+		NewDescription:      newDesc,
+	}
+
+	if t.cfg.sdamMonitor != nil && t.cfg.sdamMonitor.TopologyDescriptionChanged != nil {
+		sdam := t.cfg.sdamMonitor
+		sdam.TopologyDescriptionChanged(topologyDescriptionChanged)
+	}
+}
+
+// publishes a TopologyDescriptionChangedEvent to indicate the topology description has changed
+func (t *Topology) publishTopologyDescriptionChangedEvent(prev description.Topology, current description.Topology) {
+
+	var prevServers, newServers []event.ServerDescription
+	var prevName, newName string
+
+	// creates event.ServerDescriptions from desc.Servers
+	for _, s := range prev.Servers {
+		server := convertToServerDescription(&s)
+		if s.SetName != "" {
+			prevName = s.SetName
+		}
+		prevServers = append(prevServers, server)
+	}
+
+	for _, s := range current.Servers {
+		server := convertToServerDescription(&s)
+
+		if s.SetName != "" {
+			newName = s.SetName
+		}
+		newServers = append(newServers, server)
+	}
+
+	if t.cfg.replicaSetName != "" {
+		prevName = t.cfg.replicaSetName
+		newName = t.cfg.replicaSetName
+	}
+
+	var prevDesc, newDesc event.TopologyDescription
+	prevDesc = event.TopologyDescription{
+		Kind:              event.TopologyKind(prev.Kind),
+		Servers:           prevServers,
+		SetName:           prevName,
+		HasReadableServer: t.HasReadableServer,
+		HasWritableServer: t.HasWritableServer,
+	}
+	newDesc = event.TopologyDescription{
+		Kind:              event.TopologyKind(current.Kind),
+		Servers:           newServers,
+		SetName:           newName,
+		HasReadableServer: t.HasReadableServer,
+		HasWritableServer: t.HasWritableServer,
+	}
+
+	topologyDescriptionChanged := &event.TopologyDescriptionChangedEvent{
+		ID:                  event.TopologyID(t.id),
+		PreviousDescription: prevDesc,
+		NewDescription:      newDesc,
+	}
+
+	if t.cfg.sdamMonitor != nil && t.cfg.sdamMonitor.TopologyDescriptionChanged != nil {
+		sdam := t.cfg.sdamMonitor
+		sdam.TopologyDescriptionChanged(topologyDescriptionChanged)
+	}
+}
+
+// publishes a TopologyOpeningEvent to indicate the topology is being initialized
+func (t *Topology) publishTopologyOpeningEvent() {
+	topologyOpening := &event.TopologyOpeningEvent{
+		ID: event.TopologyID(t.id),
+	}
+
+	if t.cfg.sdamMonitor != nil && t.cfg.sdamMonitor.TopologyOpening != nil {
+		sdam := t.cfg.sdamMonitor
+		sdam.TopologyOpening(topologyOpening)
+	}
+}
+
+// publishes a TopologyClosedEvent to indicate the topology has been closed
+func (t *Topology) publishTopologyClosedEvent() {
+	topologyClosed := &event.TopologyClosedEvent{
+		ID: event.TopologyID(t.id),
+	}
+
+	if t.cfg.sdamMonitor != nil && t.cfg.sdamMonitor.TopologyClosed != nil {
+		sdam := t.cfg.sdamMonitor
+		sdam.TopologyClosed(topologyClosed)
+	}
+}
+
+// HasReadableServer returns true if a topology has a server available for reading
+// based on the specified read preference.
+func (t *Topology) HasReadableServer(mode readpref.Mode) bool {
+	desc := t.Description()
+	switch desc.Kind {
+	case description.Single, description.Sharded:
+		return hasAvailableServer(desc.Servers, 0)
+	case description.ReplicaSetWithPrimary:
+		return hasAvailableServer(desc.Servers, mode)
+	case description.ReplicaSetNoPrimary, description.ReplicaSet:
+		if mode == readpref.PrimaryMode {
+			return false
+		}
+		// invalid read preference
+		if mode > readpref.NearestMode || mode < readpref.PrimaryMode {
+			return false
+		}
+
+		return hasAvailableServer(desc.Servers, mode)
+	}
+	return false
+}
+
+// HasWritableServer returns true if a topology has a server available for writing
+func (t *Topology) HasWritableServer() bool {
+	desc := t.Description()
+	switch desc.Kind {
+	case description.ReplicaSetWithPrimary:
+		return true
+	case description.Single, description.Sharded:
+		return hasAvailableServer(desc.Servers, 0)
+	}
+	return false
+}
+
+// hasAvailableServer returns true if any servers are available based on
+// the read preference.
+func hasAvailableServer(servers []description.Server, mode readpref.Mode) bool {
+	switch mode {
+	case readpref.PrimaryMode:
+		for _, s := range servers {
+			if s.Kind == description.RSPrimary {
+				return true
+			}
+		}
+		return false
+	case readpref.PrimaryPreferredMode, readpref.SecondaryPreferredMode, readpref.NearestMode:
+		for _, s := range servers {
+			if s.Kind == description.RSPrimary || s.Kind == description.RSSecondary {
+				return true
+			}
+		}
+		return false
+	case readpref.SecondaryMode:
+		for _, s := range servers {
+			if s.Kind == description.RSSecondary {
+				return true
+			}
+		}
+		return false
+	}
+
+	// read preference is not specified
+	for _, s := range servers {
+		switch s.Kind {
+		case description.Standalone,
+			description.RSMember,
+			description.RSPrimary,
+			description.RSSecondary,
+			description.RSArbiter,
+			description.RSGhost,
+			description.Mongos:
+			return true
+		}
+	}
+
+	return false
 }

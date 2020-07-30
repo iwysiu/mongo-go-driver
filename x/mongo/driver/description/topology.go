@@ -103,3 +103,40 @@ func (t Topology) String() string {
 	}
 	return fmt.Sprintf("Type: %s, Servers: [%s]", t.Kind, serversStr)
 }
+
+// TopologyEqual compares two topology descriptions and returns true if they are equal
+func TopologyEqual(prev Topology, current Topology) bool {
+
+	diff := DiffTopology(prev, current)
+	if len(diff.Added) != 0 || len(diff.Removed) != 0 {
+		return false
+	}
+
+	if prev.Kind != current.Kind {
+		return false
+	}
+
+	oldServers := make(map[string]Server)
+	for _, s := range prev.Servers {
+		oldServers[s.Addr.String()] = s
+	}
+
+	newServers := make(map[string]Server)
+	for _, s := range current.Servers {
+		newServers[s.Addr.String()] = s
+	}
+
+	if len(oldServers) != len(newServers) {
+		return false
+	}
+
+	for _, old := range oldServers {
+		new := newServers[old.Addr.String()]
+
+		if !ServerEqual(old, new) {
+			return false
+		}
+	}
+
+	return true
+}
