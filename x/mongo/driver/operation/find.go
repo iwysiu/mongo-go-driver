@@ -14,6 +14,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson/bsontype"
 	"go.mongodb.org/mongo-driver/event"
+	"go.mongodb.org/mongo-driver/internal"
 	"go.mongodb.org/mongo-driver/mongo/description"
 	"go.mongodb.org/mongo-driver/mongo/readconcern"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -86,6 +87,8 @@ func (f *Find) Execute(ctx context.Context) error {
 		return errors.New("the Find operation must have a Deployment set before Execute can be called")
 	}
 
+	scratch := internal.GetByteSlice()
+	defer internal.PutByteSlice(scratch)
 	return driver.Operation{
 		CommandFn:         f.command,
 		ProcessResponseFn: f.processResponse,
@@ -102,7 +105,7 @@ func (f *Find) Execute(ctx context.Context) error {
 		Selector:          f.selector,
 		Legacy:            driver.LegacyFind,
 		ServerAPI:         f.serverAPI,
-	}.Execute(ctx, nil)
+	}.Execute(ctx, scratch)
 
 }
 

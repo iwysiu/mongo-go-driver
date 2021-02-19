@@ -8,6 +8,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson/bsontype"
 	"go.mongodb.org/mongo-driver/event"
+	"go.mongodb.org/mongo-driver/internal"
 	"go.mongodb.org/mongo-driver/mongo/description"
 	"go.mongodb.org/mongo-driver/x/bsonx/bsoncore"
 	"go.mongodb.org/mongo-driver/x/mongo/driver/session"
@@ -221,6 +222,8 @@ func (bc *BatchCursor) KillCursor(ctx context.Context) error {
 		return nil
 	}
 
+	scratch := internal.GetByteSlice()
+	defer internal.PutByteSlice(scratch)
 	return Operation{
 		CommandFn: func(dst []byte, desc description.SelectedServer) ([]byte, error) {
 			dst = bsoncore.AppendStringElement(dst, "killCursors", bc.collection)
@@ -234,7 +237,7 @@ func (bc *BatchCursor) KillCursor(ctx context.Context) error {
 		Legacy:         LegacyKillCursors,
 		CommandMonitor: bc.cmdMonitor,
 		ServerAPI:      bc.serverAPI,
-	}.Execute(ctx, nil)
+	}.Execute(ctx, scratch)
 }
 
 func (bc *BatchCursor) getMore(ctx context.Context) {
@@ -256,6 +259,8 @@ func (bc *BatchCursor) getMore(ctx context.Context) {
 		}
 	}
 
+	scratch := internal.GetByteSlice()
+	defer internal.PutByteSlice(scratch)
 	bc.err = Operation{
 		CommandFn: func(dst []byte, desc description.SelectedServer) ([]byte, error) {
 			dst = bsoncore.AppendInt64Element(dst, "getMore", bc.id)
@@ -307,7 +312,7 @@ func (bc *BatchCursor) getMore(ctx context.Context) {
 		Legacy:         LegacyGetMore,
 		CommandMonitor: bc.cmdMonitor,
 		Crypt:          bc.crypt,
-	}.Execute(ctx, nil)
+	}.Execute(ctx, scratch)
 
 	// Required for legacy operations which don't support limit.
 	if bc.limit != 0 && bc.numReturned >= bc.limit {

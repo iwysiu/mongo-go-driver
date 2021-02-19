@@ -13,6 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/bsontype"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/event"
+	"go.mongodb.org/mongo-driver/internal"
 	"go.mongodb.org/mongo-driver/mongo/description"
 	"go.mongodb.org/mongo-driver/mongo/readconcern"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -348,7 +349,9 @@ func (op Operation) Execute(ctx context.Context, scratch []byte) error {
 
 		// compress wiremessage if allowed
 		if compressor, ok := conn.(Compressor); ok && op.canCompress(startedInfo.cmdName) {
-			wm, err = compressor.CompressWireMessage(wm, nil)
+			buf := internal.GetByteSlice()
+			defer internal.PutByteSlice(buf)
+			wm, err = compressor.CompressWireMessage(wm, buf)
 			if err != nil {
 				return err
 			}

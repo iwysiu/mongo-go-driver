@@ -15,6 +15,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson/bsontype"
 	"go.mongodb.org/mongo-driver/event"
+	"go.mongodb.org/mongo-driver/internal"
 	"go.mongodb.org/mongo-driver/mongo/description"
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 	"go.mongodb.org/mongo-driver/x/bsonx/bsoncore"
@@ -102,6 +103,8 @@ func (ci *CreateIndexes) Execute(ctx context.Context) error {
 		return errors.New("the CreateIndexes operation must have a Deployment set before Execute can be called")
 	}
 
+	scratch := internal.GetByteSlice()
+	defer internal.PutByteSlice(scratch)
 	return driver.Operation{
 		CommandFn:         ci.command,
 		ProcessResponseFn: ci.processResponse,
@@ -114,7 +117,7 @@ func (ci *CreateIndexes) Execute(ctx context.Context) error {
 		Selector:          ci.selector,
 		WriteConcern:      ci.writeConcern,
 		ServerAPI:         ci.serverAPI,
-	}.Execute(ctx, nil)
+	}.Execute(ctx, scratch)
 
 }
 

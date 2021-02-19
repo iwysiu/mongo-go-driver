@@ -14,6 +14,7 @@ import (
 	"fmt"
 
 	"go.mongodb.org/mongo-driver/event"
+	"go.mongodb.org/mongo-driver/internal"
 	"go.mongodb.org/mongo-driver/mongo/description"
 	"go.mongodb.org/mongo-driver/mongo/readconcern"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -109,6 +110,8 @@ func (c *Count) Execute(ctx context.Context) error {
 		return errors.New("the Count operation must have a Deployment set before Execute can be called")
 	}
 
+	scratch := internal.GetByteSlice()
+	defer internal.PutByteSlice(scratch)
 	err := driver.Operation{
 		CommandFn:         c.command,
 		ProcessResponseFn: c.processResponse,
@@ -124,7 +127,7 @@ func (c *Count) Execute(ctx context.Context) error {
 		ReadPreference:    c.readPreference,
 		Selector:          c.selector,
 		ServerAPI:         c.serverAPI,
-	}.Execute(ctx, nil)
+	}.Execute(ctx, scratch)
 
 	// Swallow error if NamespaceNotFound(26) is returned from aggregate on non-existent namespace
 	if err != nil {

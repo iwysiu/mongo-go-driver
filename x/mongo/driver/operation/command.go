@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	"go.mongodb.org/mongo-driver/event"
+	"go.mongodb.org/mongo-driver/internal"
 	"go.mongodb.org/mongo-driver/mongo/description"
 	"go.mongodb.org/mongo-driver/mongo/readconcern"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -56,6 +57,8 @@ func (c *Command) Execute(ctx context.Context) error {
 		return errors.New("the Command operation must have a Deployment set before Execute can be called")
 	}
 
+	scratch := internal.GetByteSlice()
+	defer internal.PutByteSlice(scratch)
 	return driver.Operation{
 		CommandFn: func(dst []byte, desc description.SelectedServer) ([]byte, error) {
 			return append(dst, c.command[4:len(c.command)-1]...), nil
@@ -75,7 +78,7 @@ func (c *Command) Execute(ctx context.Context) error {
 		Selector:       c.selector,
 		Crypt:          c.crypt,
 		ServerAPI:      c.serverAPI,
-	}.Execute(ctx, nil)
+	}.Execute(ctx, scratch)
 }
 
 // Command sets the command to be run.

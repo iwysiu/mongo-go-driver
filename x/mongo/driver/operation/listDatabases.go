@@ -15,6 +15,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/event"
+	"go.mongodb.org/mongo-driver/internal"
 	"go.mongodb.org/mongo-driver/mongo/description"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"go.mongodb.org/mongo-driver/x/bsonx/bsoncore"
@@ -158,6 +159,8 @@ func (ld *ListDatabases) Execute(ctx context.Context) error {
 		return errors.New("the ListDatabases operation must have a Deployment set before Execute can be called")
 	}
 
+	scratch := internal.GetByteSlice()
+	defer internal.PutByteSlice(scratch)
 	return driver.Operation{
 		CommandFn:         ld.command,
 		ProcessResponseFn: ld.processResponse,
@@ -173,7 +176,7 @@ func (ld *ListDatabases) Execute(ctx context.Context) error {
 		Selector:       ld.selector,
 		Crypt:          ld.crypt,
 		ServerAPI:      ld.serverAPI,
-	}.Execute(ctx, nil)
+	}.Execute(ctx, scratch)
 
 }
 

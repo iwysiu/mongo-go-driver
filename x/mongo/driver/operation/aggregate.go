@@ -14,6 +14,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson/bsontype"
 	"go.mongodb.org/mongo-driver/event"
+	"go.mongodb.org/mongo-driver/internal"
 	"go.mongodb.org/mongo-driver/mongo/description"
 	"go.mongodb.org/mongo-driver/mongo/readconcern"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -85,6 +86,8 @@ func (a *Aggregate) Execute(ctx context.Context) error {
 		return errors.New("the Aggregate operation must have a Deployment set before Execute can be called")
 	}
 
+	scratch := internal.GetByteSlice()
+	defer internal.PutByteSlice(scratch)
 	return driver.Operation{
 		CommandFn:         a.command,
 		ProcessResponseFn: a.processResponse,
@@ -103,7 +106,7 @@ func (a *Aggregate) Execute(ctx context.Context) error {
 		Crypt:                          a.crypt,
 		MinimumWriteConcernWireVersion: 5,
 		ServerAPI:                      a.serverAPI,
-	}.Execute(ctx, nil)
+	}.Execute(ctx, scratch)
 
 }
 

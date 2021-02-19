@@ -14,6 +14,7 @@ import (
 	"fmt"
 
 	"go.mongodb.org/mongo-driver/event"
+	"go.mongodb.org/mongo-driver/internal"
 	"go.mongodb.org/mongo-driver/mongo/description"
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 	"go.mongodb.org/mongo-driver/x/bsonx/bsoncore"
@@ -79,6 +80,8 @@ func (dd *DropDatabase) Execute(ctx context.Context) error {
 		return errors.New("the DropDatabase operation must have a Deployment set before Execute can be called")
 	}
 
+	scratch := internal.GetByteSlice()
+	defer internal.PutByteSlice(scratch)
 	return driver.Operation{
 		CommandFn:         dd.command,
 		ProcessResponseFn: dd.processResponse,
@@ -91,7 +94,7 @@ func (dd *DropDatabase) Execute(ctx context.Context) error {
 		Selector:          dd.selector,
 		WriteConcern:      dd.writeConcern,
 		ServerAPI:         dd.serverAPI,
-	}.Execute(ctx, nil)
+	}.Execute(ctx, scratch)
 
 }
 

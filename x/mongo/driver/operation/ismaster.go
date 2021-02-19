@@ -216,7 +216,9 @@ func (im *IsMaster) Execute(ctx context.Context) error {
 
 // StreamResponse gets the next streaming isMaster response from the server.
 func (im *IsMaster) StreamResponse(ctx context.Context, conn driver.StreamerConnection) error {
-	return im.createOperation().ExecuteExhaust(ctx, conn, nil)
+	scratch := internal.GetByteSlice()
+	defer internal.PutByteSlice(scratch)
+	return im.createOperation().ExecuteExhaust(ctx, conn, scratch)
 }
 
 func (im *IsMaster) createOperation() driver.Operation {

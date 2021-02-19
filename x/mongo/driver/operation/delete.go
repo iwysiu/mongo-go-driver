@@ -14,6 +14,7 @@ import (
 	"fmt"
 
 	"go.mongodb.org/mongo-driver/event"
+	"go.mongodb.org/mongo-driver/internal"
 	"go.mongodb.org/mongo-driver/mongo/description"
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 	"go.mongodb.org/mongo-driver/x/bsonx/bsoncore"
@@ -91,6 +92,8 @@ func (d *Delete) Execute(ctx context.Context) error {
 		Ordered:    d.ordered,
 	}
 
+	scratch := internal.GetByteSlice()
+	defer internal.PutByteSlice(scratch)
 	return driver.Operation{
 		CommandFn:         d.command,
 		ProcessResponseFn: d.processResponse,
@@ -106,7 +109,7 @@ func (d *Delete) Execute(ctx context.Context) error {
 		Selector:          d.selector,
 		WriteConcern:      d.writeConcern,
 		ServerAPI:         d.serverAPI,
-	}.Execute(ctx, nil)
+	}.Execute(ctx, scratch)
 
 }
 

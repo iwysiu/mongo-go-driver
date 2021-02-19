@@ -13,6 +13,7 @@ import (
 	"errors"
 
 	"go.mongodb.org/mongo-driver/event"
+	"go.mongodb.org/mongo-driver/internal"
 	"go.mongodb.org/mongo-driver/mongo/description"
 	"go.mongodb.org/mongo-driver/mongo/readconcern"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -85,6 +86,8 @@ func (d *Distinct) Execute(ctx context.Context) error {
 		return errors.New("the Distinct operation must have a Deployment set before Execute can be called")
 	}
 
+	scratch := internal.GetByteSlice()
+	defer internal.PutByteSlice(scratch)
 	return driver.Operation{
 		CommandFn:         d.command,
 		ProcessResponseFn: d.processResponse,
@@ -100,7 +103,7 @@ func (d *Distinct) Execute(ctx context.Context) error {
 		ReadPreference:    d.readPreference,
 		Selector:          d.selector,
 		ServerAPI:         d.serverAPI,
-	}.Execute(ctx, nil)
+	}.Execute(ctx, scratch)
 
 }
 

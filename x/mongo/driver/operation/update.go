@@ -15,6 +15,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/event"
+	"go.mongodb.org/mongo-driver/internal"
 	"go.mongodb.org/mongo-driver/mongo/description"
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 	"go.mongodb.org/mongo-driver/x/bsonx/bsoncore"
@@ -148,6 +149,8 @@ func (u *Update) Execute(ctx context.Context) error {
 		Ordered:    u.ordered,
 	}
 
+	scratch := internal.GetByteSlice()
+	defer internal.PutByteSlice(scratch)
 	return driver.Operation{
 		CommandFn:         u.command,
 		ProcessResponseFn: u.processResponse,
@@ -163,7 +166,7 @@ func (u *Update) Execute(ctx context.Context) error {
 		WriteConcern:      u.writeConcern,
 		Crypt:             u.crypt,
 		ServerAPI:         u.serverAPI,
-	}.Execute(ctx, nil)
+	}.Execute(ctx, scratch)
 
 }
 

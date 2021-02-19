@@ -13,6 +13,7 @@ import (
 	"errors"
 
 	"go.mongodb.org/mongo-driver/event"
+	"go.mongodb.org/mongo-driver/internal"
 	"go.mongodb.org/mongo-driver/mongo/description"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"go.mongodb.org/mongo-driver/x/bsonx/bsoncore"
@@ -71,6 +72,8 @@ func (lc *ListCollections) Execute(ctx context.Context) error {
 		return errors.New("the ListCollections operation must have a Deployment set before Execute can be called")
 	}
 
+	scratch := internal.GetByteSlice()
+	defer internal.PutByteSlice(scratch)
 	return driver.Operation{
 		CommandFn:         lc.command,
 		ProcessResponseFn: lc.processResponse,
@@ -86,7 +89,7 @@ func (lc *ListCollections) Execute(ctx context.Context) error {
 		Selector:          lc.selector,
 		Legacy:            driver.LegacyListCollections,
 		ServerAPI:         lc.serverAPI,
-	}.Execute(ctx, nil)
+	}.Execute(ctx, scratch)
 
 }
 

@@ -13,6 +13,7 @@ import (
 	"errors"
 
 	"go.mongodb.org/mongo-driver/event"
+	"go.mongodb.org/mongo-driver/internal"
 	"go.mongodb.org/mongo-driver/mongo/description"
 	"go.mongodb.org/mongo-driver/x/bsonx/bsoncore"
 	"go.mongodb.org/mongo-driver/x/mongo/driver"
@@ -66,6 +67,8 @@ func (li *ListIndexes) Execute(ctx context.Context) error {
 		return errors.New("the ListIndexes operation must have a Deployment set before Execute can be called")
 	}
 
+	scratch := internal.GetByteSlice()
+	defer internal.PutByteSlice(scratch)
 	return driver.Operation{
 		CommandFn:         li.command,
 		ProcessResponseFn: li.processResponse,
@@ -81,7 +84,7 @@ func (li *ListIndexes) Execute(ctx context.Context) error {
 		RetryMode:      li.retry,
 		Type:           driver.Read,
 		ServerAPI:      li.serverAPI,
-	}.Execute(ctx, nil)
+	}.Execute(ctx, scratch)
 
 }
 
